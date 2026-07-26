@@ -1,6 +1,7 @@
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Any, Optional
+from urllib.parse import quote_plus
 
 
 class Settings(BaseSettings):
@@ -37,6 +38,38 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(
         default="redis://localhost:6379/0", description="URL kết nối Redis DB"
     )
+
+    # Postgres config
+    POSTGRES_SERVER: str = "timescaledb"
+    POSTGRES_PORT: str = "5432"
+    POSTGRES_USER: str = "admin"
+    POSTGRES_PASSWORD: str = "Admin@123"
+    POSTGRES_DB: str = "rnd_lab_db"
+
+    DATABASE_URL: str = ""
+    ECHO_SQL: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_db_connection(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Chỉ lắp ráp DATABASE_URL nếu chưa được truyền từ môi trường
+            database_url = data.get("DATABASE_URL")
+            if not database_url:
+                server = data.get("POSTGRES_SERVER", "timescaledb")
+                port = data.get("POSTGRES_PORT", "5432")
+                user = data.get("POSTGRES_USER", "admin")
+                password = data.get("POSTGRES_PASSWORD", "Admin@123")
+                db = data.get("POSTGRES_DB", "rnd_lab_db")
+
+                # Mã hóa ký tự đặc biệt trong username và password (ví dụ ký tự "@")
+                safe_user = quote_plus(user)
+                safe_password = quote_plus(password)
+
+                data["DATABASE_URL"] = (
+                    f"postgresql://{safe_user}:{safe_password}@{server}:{port}/{db}"
+                )
+        return data
 
 
 # Khởi tạo đối tượng settings duy nhất cho toàn hệ thống

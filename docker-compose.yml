@@ -1,4 +1,44 @@
 services:
+  timescaledb:
+    # Sử dụng image chính thức của TimescaleDB, lõi là Postgres 16
+    image: timescale/timescaledb:latest-pg16
+    container_name: rnd_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=${VIETNAM_TZ}
+    ports:
+      - 5432:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    networks:
+      - rnd_network
+    shm_size: 1gb  # Tăng bộ nhớ chia sẻ cho TimescaleDB
+    command: [
+      "postgres",
+      "-c", "timescaledb.telemetry_level=off",
+      "-c", "shared_buffers=1GB",               # Dành 25% RAM cho cache dữ liệu lõi
+      "-c", "work_mem=16MB",                    # Tăng bộ nhớ cho các thao tác SORT/JOIN
+      "-c", "max_connections=100",              # Giới hạn connection để tránh cạn kiệt RAM
+      "-c", "effective_cache_size=3GB"          # Gợi ý cho query planner về tổng RAM có sẵn cho caching
+    ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s      # Khoảng thời gian giữa các lần check
+      timeout: 5s        # Thời gian chờ tối đa cho mỗi lần check
+      retries: 5         # Số lần thử lại trước khi đánh dấu là unhealthy
+      start_period: 30s  # Thời gian ân hạn lúc mới start container
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: 2G
+        reservations:
+          cpus: 0.5
+          memory: 1G
+
   redis:
     image: redis:7-alpine
     container_name: rnd_redis
@@ -11,9 +51,9 @@ services:
       - rnd_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s      # Khoảng thời gian giữa các lần check
-      timeout: 5s        # Thời gian chờ tối đa cho mỗi lần check
-      retries: 5         # Số lần thử lại trước khi đánh dấu là unhealthy
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: .
@@ -36,11 +76,15 @@ services:
       - rnd_network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
+      timescaledb:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
 
 volumes:
+  pgdata:
+    name: rnd_pgdata
   redisdata:
     name: rnd_redisdata
 
