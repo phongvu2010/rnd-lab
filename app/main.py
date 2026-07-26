@@ -4,6 +4,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.v1.api import api_router
 from .core.config import settings
 
 # Thiết lập ghi nhật ký ra terminal chuẩn đầu ra
@@ -33,6 +34,9 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+# Đăng ký các endpoints API
+app.include_router(api_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/", tags=["Hệ thống"])

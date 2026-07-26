@@ -18,6 +18,12 @@
 
 
 ### Package
+db-dtypes
 fastapi
+google-cloud-bigquery
+google-cloud-bigquery-storage
+kaggle
+pandas
 pydantic-settings
+redis
 uvicorn

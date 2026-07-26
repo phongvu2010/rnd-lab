@@ -1,15 +1,48 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: rnd_redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    volumes:
+      - redisdata:/data
+    networks:
+      - rnd_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s      # Khoảng thời gian giữa các lần check
+      timeout: 5s        # Thời gian chờ tối đa cho mỗi lần check
+      retries: 5         # Số lần thử lại trước khi đánh dấu là unhealthy
+
   backend:
     build: .
     container_name: rnd_fastapi
     restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/src/config/credentials.json
+      - KAGGLE_CONFIG_DIR=/src/config
+      - REDIS_URL=redis://redis:6379/0
     ports:
       - 8000:8000
     volumes:
       - ./app:/src/app               # Mount code để Live Reload trong lúc dev
+      - ./data:/src/data             # Thư mục tạm (Staging/Downloads)
+      - ./registry:/src/registry     # Lưu trữ mô hình chính thức (.pkl)
+      - ../.secrets:/src/config      # Thư mục chứa cả kaggle.json & google_credentials.json
     networks:
       - rnd_network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      redis:
+        condition: service_healthy
+
+
+volumes:
+  redisdata:
+    name: rnd_redisdata
 
 
 networks:

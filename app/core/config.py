@@ -1,4 +1,6 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -25,6 +27,16 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
     ]
+
+    # Kaggle config
+    KAGGLE_USERNAME: Optional[str] = Field(
+        default=None, description="Tên tài khoản Kaggle API"
+    )
+
+    # Redis config
+    REDIS_URL: str = Field(
+        default="redis://localhost:6379/0", description="URL kết nối Redis DB"
+    )
 
 
 # Khởi tạo đối tượng settings duy nhất cho toàn hệ thống
