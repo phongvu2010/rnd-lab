@@ -5,12 +5,16 @@ FROM python:3.12-slim
 WORKDIR /src
 
 # Vô hiệu hóa bytecode và buffer để log hiện trực tiếp trên terminal
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # Cài đặt các thư viện hệ thống cần thiết (nếu có)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Tạo và kích hoạt virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Cài đặt dependencies
 COPY requirements.txt .

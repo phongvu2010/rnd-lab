@@ -1,11 +1,13 @@
+import asyncio
 import logging
 import sys
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import SQLModel
+from sqlmodel import select, Session, SQLModel
 
+from .agents.backtest_agent import get_backtest_agent
 from .api.v1.api import api_router
 from .core.config import settings
 from .core.database import engine
@@ -32,8 +34,31 @@ async def lifespan(app: FastAPI):
     try:
         SQLModel.metadata.create_all(engine)
         logger.info("Khởi tạo database schemas thành công!")
+
+        # --- State Recovery: Phục hồi các task đang chạy dở ---
+        with Session(engine) as db:
+            statement = (
+                select(BacktestRun)
+                .join(Strategy)
+                .where(Strategy.current_status == StrategyStatus.TESTING)
+                .where(BacktestRun.is_successful == False)
+            )
+            pending_runs = db.exec(statement).all()
+
+            if pending_runs:
+                logger.info(f"Phát hiện {len(pending_runs)} lượt chạy chưa hoàn thành. Đang khôi phục (State Recovery)...")
+                backtest_agent = get_backtest_agent()
+
+                for run in pending_runs:
+                    # Bỏ qua các run bị lỗi ngay từ bước tạo (chưa có kernel id thực tế)
+                    if run.kaggle_kernel_id and not run.kaggle_kernel_id.startswith(("pending", "error", "failed")):
+                        # Đẩy vào event loop chạy ngầm để tiếp tục theo dõi
+                        asyncio.create_task(
+                            backtest_agent.poll_and_evaluate(run.id, run.kaggle_kernel_id)
+                        )
+                        logger.info(f"Đã khôi phục tác vụ theo dõi Kaggle ID: {run.kaggle_kernel_id}")
     except Exception as e:
-        logger.error(f"Lỗi khởi tạo database schemas: {e}")
+        logger.error(f"Lỗi khởi tạo database schemas hoặc State Recovery: {e}")
 
     yield
     logger.info("Đang tắt ứng dụng...")
