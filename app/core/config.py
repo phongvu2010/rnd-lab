@@ -71,6 +71,16 @@ class Settings(BaseSettings):
                 )
         return data
 
+    # OpenAI config
+    OPENAI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Khóa API OpenAI",
+    )
+    OPENAI_MODEL: str = Field(
+        default="gpt-4o",
+        description="Model OpenAI mặc định sử dụng cho Research Agent",
+    )
+
 
 # Khởi tạo đối tượng settings duy nhất cho toàn hệ thống
 settings = Settings()

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
+from pydantic import BaseModel
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
@@ -148,3 +149,29 @@ class StrategyReadWithBacktestRuns(StrategyRead):
 
 class BacktestRunWithStrategy(BacktestRunRead):
     strategy: Optional[StrategyRead] = None
+
+
+class MLStrategyRequest(BaseModel):
+    user_prompt: str
+
+
+class LLMGeneratedStrategy(BaseModel):
+    """Schema ép kiểu đầu ra cho Tác tử Kiến tạo (LLM) khi sinh code ML."""
+
+    rationale: str = Field(
+        ..., description="Giải thích ngắn gọn logic và giả thuyết của chiến lược này."
+    )
+    cell_imports: str = Field(
+        ...,
+        description="Mã nguồn import các thư viện Python (pandas, scikit-learn...).",
+    )
+    cell_data_prep: str = Field(
+        ..., description="Mã nguồn load file /kaggle/input/..., xử lý NaN, sinh X, y."
+    )
+    cell_model: str = Field(
+        ..., description="Mã nguồn khởi tạo và huấn luyện mô hình Machine Learning."
+    )
+    cell_export: str = Field(
+        ...,
+        description="Mã nguồn lưu mô hình ra /kaggle/working/...pkl và tính toán backtest_metrics.json.",
+    )

@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 
 from functools import lru_cache
 from kaggle.api.kaggle_api_extended import KaggleApi
@@ -82,6 +83,97 @@ class KaggleService:
             except Exception as create_err:
                 logger.error(f"Lỗi khi tạo mới dataset '{dataset_slug}': {create_err}")
                 return False
+
+    def push_kernel(
+        self,
+        notebook_path: str,
+        kernel_slug: str,
+        title: str,
+        dataset_sources: list = None,
+    ) -> str:
+        """Đẩy file .ipynb lên Kaggle để chạy ngầm (Training/Backtesting)."""
+        if not self.username:
+            raise ValueError(
+                "KAGGLE_USERNAME chưa được cấu hình trong file settings hoặc biến môi trường."
+            )
+
+        src_nb = Path(notebook_path)
+
+        # 1. Tạo thư mục tạm để chứa code chuẩn bị push
+        staging_dir = Path("data/staging") / kernel_slug
+        try:
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
+            # 2. Copy file .ipynb vào thư mục tạm
+            shutil.copy(src_nb, staging_dir)
+
+            # 3. Tạo file kernel-metadata.json
+            metadata = {
+                "id": f"{self.username}/{kernel_slug}",
+                "title": title,
+                "code_file": src_nb.name,
+                "language": "python",
+                "kernel_type": "notebook",
+                "is_private": "true",
+                "enable_gpu": "true",  # Bật GPU nếu cần train ML nặng
+                "enable_internet": "true",
+                "dataset_sources": dataset_sources or [],
+                "competition_sources": [],
+                "kernel_sources": [],
+            }
+
+            meta_path = staging_dir / "kernel-metadata.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+            # 4. Push lên Kaggle
+            logger.info(f"Đang đẩy kernel lên Kaggle: {self.username}/{kernel_slug}...")
+            self.api.kernels_push(str(staging_dir))
+
+            return f"{self.username}/{kernel_slug}"
+        finally:
+            # Dọn dẹp thư mục tạm an toàn trong mọi trường hợp (kể cả khi gặp exception)
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def get_kernel_log(self, kernel_id: str) -> str:
+        """Lấy log thực thi của Kernel để truy vết lỗi (Traceback)."""
+        try:
+            # api.kernel_log trả về một string chứa toàn bộ console log
+            # (Ở một số phiên bản Kaggle API cũ, bạn có thể dùng self.api.kernel_status(kernel_id).get('failureMessage'))
+            log = self.api.kernel_log(kernel_id)
+            return log if log else "No log available."
+        except AttributeError:
+            # Fallback an toàn nếu thư viện Kaggle API hiện tại không bộc lộ hàm kernel_log
+            status_info = self.api.kernel_status(kernel_id)
+            return status_info.get("failureMessage", "Không thể lấy log lỗi chi tiết từ Kaggle.")
+        except Exception as e:
+            logger.error(f"Lỗi khi kéo log từ Kaggle: {e}")
+            return str(e)
+
+    def get_kernel_status(self, kernel_id: str) -> str:
+        """Kiểm tra trạng thái Notebook: 'queued', 'running', 'complete', 'error'"""
+        status = self.api.kernel_status(kernel_id)
+        return status.get("status", "unknown")
+
+    def pull_kernel_output(
+        self, kernel_id: str, download_path: str = "data/downloads"
+    ) -> str:
+        """
+        Tải toàn bộ file đầu ra (metrics, model) về khi Kaggle chạy xong.
+        Tác tử Kiểm định sẽ nghiệm thu dữ liệu từ hàm này.
+        """
+        dl_dir = Path(download_path)
+        dl_dir.mkdir(parents=True, exist_ok=True)
+
+        # API sẽ tải về một file .zip chứa toàn bộ nội dung của /kaggle/working/
+        logger.info(f"Đang tải output của kernel: {kernel_id} về {dl_dir}...")
+        self.api.kernels_output(kernel_id, path=str(dl_dir))
+
+        # Tên file zip thường được định dạng theo tên kernel
+        kernel_slug = kernel_id.split("/")[-1]
+        zip_path = dl_dir / f"{kernel_slug}.zip"
+
+        return str(zip_path)
 
 
 # Dependency Injection function cho FastAPI (được cache lại để tránh khởi tạo nhiều lần)
