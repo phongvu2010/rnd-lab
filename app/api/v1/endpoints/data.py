@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from app.core.config import settings
 from app.services.bigquery_service import BigQueryService, get_bigquery_service
 from app.services.kaggle_service import KaggleService, get_kaggle_service
 from app.services.task_service import TaskService, get_task_service
@@ -18,20 +19,20 @@ router = APIRouter()
 
 class SyncDataRequest(BaseModel):
     project_id: Optional[str] = Field(
-        default=None,
-        description="ID của dự án GCP chứa BigQuery (nếu không chỉ định sẽ dùng project mặc định của Credentials)",
+        default_factory=lambda: settings.BIGQUERY_PROJECT_ID,
+        description="ID của dự án GCP chứa BigQuery (mặc định lấy từ BIGQUERY_PROJECT_ID trong .env nếu không chỉ định)",
     )
     dataset_id: str = Field(
-        default="vn_stock",
-        description="ID của dataset trên BigQuery",
+        default_factory=lambda: settings.BIGQUERY_DATASET_ID,
+        description="ID của dataset trên BigQuery (mặc định lấy từ BIGQUERY_DATASET_ID trong .env)",
     )
     table_ids: List[str] = Field(
         default=["adj_price", "raw_price"],
         description="Danh sách các bảng cần kéo dữ liệu (vd: adj_price, raw_price)",
     )
     dataset_slug: str = Field(
-        default="vn-stock-market-data",
-        description="Slug định danh dataset trên Kaggle",
+        default_factory=lambda: settings.KAGGLE_DATASET_SLUG,
+        description="Slug định danh dataset trên Kaggle (mặc định lấy từ KAGGLE_DATASET_SLUG trong .env)",
     )
     title: str = Field(
         default="Vietnam Stock Market Data (Auto-sync)",

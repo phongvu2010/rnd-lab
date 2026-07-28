@@ -29,9 +29,20 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # BigQuery config
+    BIGQUERY_PROJECT_ID: Optional[str] = Field(
+        default=None, description="ID dự án Google Cloud chứa BigQuery"
+    )
+    BIGQUERY_DATASET_ID: str = Field(
+        default="vn_stock", description="Dataset ID mặc định trên BigQuery"
+    )
+
     # Kaggle config
     KAGGLE_USERNAME: Optional[str] = Field(
         default=None, description="Tên tài khoản Kaggle API"
+    )
+    KAGGLE_DATASET_SLUG: str = Field(
+        default="vn-stock-market-data", description="Slug định danh Kaggle Dataset mặc định"
     )
 
     # Redis config

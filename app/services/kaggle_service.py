@@ -33,6 +33,11 @@ class KaggleService:
                 )
         return self._api
 
+    @property
+    def api(self) -> KaggleApi:
+        """Property bọc qua _get_api để cung cấp giao diện tự động Lazy Authentication cho self.api."""
+        return self._get_api()
+
     def push_dataset(
         self, folder_path: str, dataset_slug: str, title: str, is_private: bool = True
     ) -> bool:
