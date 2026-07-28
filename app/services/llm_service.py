@@ -44,7 +44,7 @@ class LLMService:
                 {"role": "system", "content": get_alpha_system_prompt()},
                 {"role": "user", "content": user_request},
             ],
-            max_tokens=2500,
+            max_tokens=6000,
         )
 
         return strategy_response
@@ -64,7 +64,7 @@ class LLMService:
                 {"role": "user", "content": original_request},
                 {"role": "user", "content": get_alpha_fix_prompt(traceback_log)},
             ],
-            max_tokens=2500,
+            max_tokens=6000,
         )
 
         return fixed_response

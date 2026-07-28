@@ -27,6 +27,7 @@ class AlphaAgent:
         self.llm = llm
         self.builder = builder
         self.kaggle = kaggle
+        self.dataset_slug = settings.KAGGLE_DATASET_SLUG
 
         username = settings.KAGGLE_USERNAME or ""
         if not username:
@@ -35,15 +36,16 @@ class AlphaAgent:
             )
         # Đường dẫn dataset trên Kaggle mà Tác tử Dữ liệu đã đẩy lên
         # Ví dụ: "phongvu2010/vn-stock-market-data"
-        self.dataset_sources = [f"{username}/vn-stock-market-data"] if username else []
+        self.dataset_sources = [f"{username}/{self.dataset_slug}"] if username else []
 
     async def run_ml_dynamic_strategy(self, request_prompt: str) -> dict:
         """
         Thực thi chiến lược Tự học (Machine Learning) bằng cách yêu cầu LLM viết code.
         """
         kernel_id = f"ml-dynamic-{uuid4().hex[:8]}"
+        target_slug = self.dataset_slug
 
-        logger.info(f"[Alpha Agent] Bắt đầu suy nghĩ về chiến lược: {request_prompt}")
+        logger.info(f"[Alpha Agent] Bắt đầu suy nghĩ về chiến lược: {request_prompt} (dataset: {target_slug})")
 
         # 1. LLM sinh code động (Ép kiểu nghiêm ngặt theo Schema)
         strategy_schema: LLMGeneratedStrategy = await self.llm.generate_ml_strategy(request_prompt)
@@ -109,6 +111,7 @@ class AlphaAgent:
         Cơ chế Self-Healing: Khi Kaggle Kernel bị lỗi, tự động gọi LLM phân tích log lỗi để sửa code và push lại.
         """
         kernel_id = f"ml-healed-{uuid4().hex[:8]}"
+        target_slug = self.dataset_slug
 
         logger.info(f"[Alpha Agent - Self Healing] Bắt đầu sửa lỗi code cho prompt: {original_prompt}")
 

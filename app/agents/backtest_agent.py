@@ -58,11 +58,15 @@ class BacktestAgent:
                         else:
                             logger.warning(f"[Backtest Agent] Không tìm thấy file backtest_metrics.json trong thư mục output.")
 
-                        # Tìm kiếm file model (.pkl) nếu có
+                        # Tìm kiếm file model artifact (hỗ trợ đa dạng các định dạng phổ biến)
                         model_file_path = None
-                        for f_path in extract_dir.glob("*.pkl"):
-                            model_file_path = f_path
-                            break
+                        supported_patterns = ("*.pkl", "*.joblib", "*.pth", "*.onnx", "*.h5", "*.keras")
+                        for pattern in supported_patterns:
+                            for f_path in extract_dir.glob(pattern):
+                                model_file_path = f_path
+                                break
+                            if model_file_path:
+                                break
 
                         # Xác định kết quả duyệt chiến lược
                         sharpe = metrics_data.get("sharpe_ratio", 0)
@@ -73,7 +77,8 @@ class BacktestAgent:
                         if model_file_path and is_approved:
                             registry_dir = Path("registry/models")
                             registry_dir.mkdir(parents=True, exist_ok=True)
-                            dest_path = registry_dir / f"model_{backtest_run_id}.pkl"
+                            ext = model_file_path.suffix or ".pkl"
+                            dest_path = registry_dir / f"model_{backtest_run_id}{ext}"
 
                             # Di chuyển file qua Worker Thread
                             await asyncio.to_thread(shutil.move, str(model_file_path), str(dest_path))
