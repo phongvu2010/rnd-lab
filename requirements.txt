@@ -30,3 +30,13 @@ pydantic-settings
 redis
 sqlmodel
 uvicorn
+
+# fastparquet
+# holidays>=0.30
+# openai
+# nbformat
+# papermill
+# polars>=1.0.0
+# pyarrow
+# pydantic
+# vn-backtest==0.1.3
