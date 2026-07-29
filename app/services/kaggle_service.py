@@ -5,6 +5,7 @@ import shutil
 from functools import lru_cache
 from kaggle.api.kaggle_api_extended import KaggleApi
 from pathlib import Path
+from typing import Optional
 
 from ..core.config import settings
 
@@ -39,9 +40,18 @@ class KaggleService:
         return self._get_api()
 
     def push_dataset(
-        self, folder_path: str, dataset_slug: str, title: str, is_private: bool = True
+        self,
+        folder_path: str,
+        dataset_slug: Optional[str] = None,
+        title: Optional[str] = None,
+        is_private: bool = True,
     ) -> bool:
         """Đóng gói dữ liệu lịch sử và đẩy lên Kaggle dưới dạng Private Dataset."""
+        # Mặc định lấy slug từ Settings nếu không được truyền vào
+        effective_slug = dataset_slug or settings.KAGGLE_DATASET_SLUG
+        # Mặc định lấy title chuẩn nếu không được truyền vào
+        effective_title = title or "Vietnam Stock Market Data (Auto-sync)"
+
         if not self.username:
             raise ValueError(
                 "KAGGLE_USERNAME chưa được cấu hình trong file settings hoặc biến môi trường."
@@ -53,8 +63,8 @@ class KaggleService:
         folder.mkdir(parents=True, exist_ok=True)
 
         metadata = {
-            "title": title,
-            "id": f"{self.username}/{dataset_slug}",
+            "title": effective_title,
+            "id": f"{self.username}/{effective_slug}",
             "licenses": [{"name": "unknown"}],
             "isPrivate": is_private,
         }
@@ -64,7 +74,7 @@ class KaggleService:
             json.dump(metadata, f, indent=2)
 
         logger.info(
-            f"Đã tạo file metadata cho dataset: {self.username}/{dataset_slug} tại {meta_path}"
+            f"Đã tạo file metadata cho dataset: {self.username}/{effective_slug} tại {meta_path}"
         )
 
         try:
@@ -74,26 +84,26 @@ class KaggleService:
                 version_notes="Auto-sync from R&D Lab Backend",
                 dir_mode="zip",
             )
-            logger.info(f"Đã cập nhật phiên bản dataset thành công: {dataset_slug}")
+            logger.info(f"Đã cập nhật phiên bản dataset thành công: {effective_slug}")
             return True
         except Exception as e:
             logger.warning(
-                f"Không thể cập nhật phiên bản dataset '{dataset_slug}' ({e}). "
+                f"Không thể cập nhật phiên bản dataset '{effective_slug}' ({e}). "
                 "Đang thử tạo mới dataset..."
             )
             try:
                 api.dataset_create_new(folder=str(folder), dir_mode="zip")
-                logger.info(f"Đã tạo mới dataset thành công: {dataset_slug}")
+                logger.info(f"Đã tạo mới dataset thành công: {effective_slug}")
                 return True
             except Exception as create_err:
-                logger.error(f"Lỗi khi tạo mới dataset '{dataset_slug}': {create_err}")
+                logger.error(f"Lỗi khi tạo mới dataset '{effective_slug}': {create_err}")
                 return False
 
     def push_kernel(
         self,
         notebook_path: str,
         kernel_slug: str,
-        title: str,
+        title: Optional[str] = None,
         dataset_sources: list = None,
     ) -> str:
         """Đẩy file .ipynb lên Kaggle để chạy ngầm (Training/Backtesting)."""
@@ -102,9 +112,12 @@ class KaggleService:
                 "KAGGLE_USERNAME chưa được cấu hình trong file settings hoặc biến môi trường."
             )
 
+        # Nếu không truyền title, tự động format title đẹp từ kernel_slug (vd: "backtest-agent" -> "Backtest Agent")
+        effective_title = title or kernel_slug.replace("-", " ").title()
+
         src_nb = Path(notebook_path)
 
-        # 1. Tạo thư mục tạm để chứa code chuẩn bị push
+        # 1. Tạo thư mục tạm để chứa code chuẩn bị push (dùng kernel_slug không chứa khoảng trắng)
         staging_dir = Path("data/staging") / kernel_slug
         try:
             staging_dir.mkdir(parents=True, exist_ok=True)
@@ -112,10 +125,10 @@ class KaggleService:
             # 2. Copy file .ipynb vào thư mục tạm
             shutil.copy(src_nb, staging_dir)
 
-            # 3. Tạo file kernel-metadata.json
+            # 3. Tạo file kernel-metadata.json (id dùng kernel_slug, title dùng effective_title)
             metadata = {
                 "id": f"{self.username}/{kernel_slug}",
-                "title": title,
+                "title": effective_title,
                 "code_file": src_nb.name,
                 "language": "python",
                 "kernel_type": "notebook",

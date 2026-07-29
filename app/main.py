@@ -11,6 +11,7 @@ from .agents.backtest_agent import get_backtest_agent
 from .api.v1.api import api_router
 from .core.config import settings
 from .core.database import engine
+from .services.task_service import get_task_service
 
 # Import các models để chúng đăng ký với SQLModel.metadata trước khi chạy create_all
 from .schemas import BacktestRun, Strategy, StrategyStatus
@@ -57,6 +58,16 @@ async def lifespan(app: FastAPI):
                             backtest_agent.poll_and_evaluate(run.id, run.kaggle_kernel_id)
                         )
                         logger.info(f"Đã khôi phục tác vụ theo dõi Kaggle ID: {run.kaggle_kernel_id}")
+
+        # --- Cleanup Stale Data Sync Tasks ---
+        logger.info("Đang dọn dẹp các tác vụ đồng bộ dữ liệu (Data Sync) bị kẹt...")
+        task_service = get_task_service()
+        tasks = task_service.list_tasks()
+        for task in tasks:
+            if task.get("status") == "RUNNING":
+                task["status"] = "FAILED"
+                task["error"] = "Tác vụ bị gián đoạn do máy chủ khởi động lại."
+                task_service.save_task(task["task_id"], task)
     except Exception as e:
         logger.error(f"Lỗi khởi tạo database schemas hoặc State Recovery: {e}")
 

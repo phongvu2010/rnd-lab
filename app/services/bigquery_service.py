@@ -9,6 +9,8 @@ from google.cloud import bigquery
 from pathlib import Path
 from typing import Optional
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,9 +53,7 @@ class BigQueryService:
 
     def fetch_table_to_parquet(
         self,
-        dataset_id: str,
         table_id: str,
-        project_id: Optional[str] = None,
         output_dir: str = "data/staging",
         limit: Optional[int] = None,
         start_date: Optional[str] = None,
@@ -65,9 +65,7 @@ class BigQueryService:
         Truy vấn dữ liệu từ một bảng BigQuery (hỗ trợ cache cục bộ, lọc ngày linh hoạt, years_back và giới hạn dòng) và lưu thành file .parquet.
 
         Args:
-            dataset_id: Tên dataset trên BigQuery (vd: "stock_market")
             table_id: Tên bảng (vd: "adj_price" hoặc "raw_price")
-            project_id: Tùy chọn ID dự án Google Cloud. Nếu không truyền, mặc định dùng project của Client.
             output_dir: Thư mục lưu file tạm trên máy chủ.
             limit: Giới hạn số lượng dòng tải về.
             start_date: Chỉ lấy dữ liệu từ ngày này trở đi (định dạng YYYY-MM-DD).
@@ -78,18 +76,7 @@ class BigQueryService:
         Returns:
             Đường dẫn đến file .parquet đã lưu.
         """
-        # Kiểm tra tính hợp lệ của dataset_id, table_id và project_id để phòng chống SQL Injection
-        if not (re.match(r"^\w+$", dataset_id) and re.match(r"^\w+$", table_id)):
-            raise ValueError(
-                "dataset_id và table_id chỉ được chứa các ký tự chữ, số và dấu gạch dưới."
-            )
-
-        if project_id and not re.match(r"^[a-zA-Z0-9-]+$", project_id):
-            raise ValueError(
-                "project_id chỉ được chứa các ký tự chữ, số và dấu gạch ngang."
-            )
-
-        target_project = project_id or self.client.project
+        target_project = self.client.project
 
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
@@ -111,7 +98,7 @@ class BigQueryService:
                 )
         elif force_refresh:
             logger.info(
-                f"[Force Refresh] Bắt buộc tải dữ liệu mới từ BigQuery cho bảng {target_project}.{dataset_id}.{table_id}..."
+                f"[Force Refresh] Bắt buộc tải dữ liệu mới từ BigQuery cho bảng {target_project}.{settings.BIGQUERY_DATASET_ID}.{table_id}..."
             )
 
         # Xử lý tự động start_date theo years_back nếu start_date không được chỉ định
@@ -126,7 +113,7 @@ class BigQueryService:
 
         # Xây dựng câu lệnh SQL có bộ lọc và giới hạn
         query = f"""
-            SELECT * FROM `{target_project}.{dataset_id}.{table_id}`
+            SELECT * FROM `{target_project}.{settings.BIGQUERY_DATASET_ID}.{table_id}`
         """
 
         conditions = []
@@ -146,7 +133,7 @@ class BigQueryService:
             query += f" LIMIT {int(limit)}"
 
         logger.info(
-            f"Đang truy vấn BigQuery: {target_project}.{dataset_id}.{table_id}..."
+            f"Đang truy vấn BigQuery: {target_project}.{settings.BIGQUERY_DATASET_ID}.{table_id}..."
         )
 
         # Tải dữ liệu thẳng vào Pandas DataFrame
@@ -160,9 +147,7 @@ class BigQueryService:
 
     async def fetch_table_to_parquet_async(
         self,
-        dataset_id: str,
         table_id: str,
-        project_id: Optional[str] = None,
         output_dir: str = "data/staging",
         limit: Optional[int] = None,
         start_date: Optional[str] = None,
@@ -176,9 +161,7 @@ class BigQueryService:
         """
         return await asyncio.to_thread(
             self.fetch_table_to_parquet,
-            dataset_id,
             table_id,
-            project_id,
             output_dir,
             limit,
             start_date,

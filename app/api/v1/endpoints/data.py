@@ -1,12 +1,12 @@
 import asyncio
 import logging
-import uuid
 
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from uuid import uuid4
 
 from app.core.config import settings
 from app.services.bigquery_service import BigQueryService, get_bigquery_service
@@ -18,25 +18,9 @@ router = APIRouter()
 
 
 class SyncDataRequest(BaseModel):
-    project_id: Optional[str] = Field(
-        default_factory=lambda: settings.BIGQUERY_PROJECT_ID,
-        description="ID của dự án GCP chứa BigQuery (mặc định lấy từ BIGQUERY_PROJECT_ID trong .env nếu không chỉ định)",
-    )
-    dataset_id: str = Field(
-        default_factory=lambda: settings.BIGQUERY_DATASET_ID,
-        description="ID của dataset trên BigQuery (mặc định lấy từ BIGQUERY_DATASET_ID trong .env)",
-    )
     table_ids: List[str] = Field(
         default=["adj_price", "raw_price"],
         description="Danh sách các bảng cần kéo dữ liệu (vd: adj_price, raw_price)",
-    )
-    dataset_slug: str = Field(
-        default_factory=lambda: settings.KAGGLE_DATASET_SLUG,
-        description="Slug định danh dataset trên Kaggle (mặc định lấy từ KAGGLE_DATASET_SLUG trong .env)",
-    )
-    title: str = Field(
-        default="Vietnam Stock Market Data (Auto-sync)",
-        description="Tiêu đề của Kaggle Dataset",
     )
     output_dir: str = Field(
         default="data/staging",
@@ -108,16 +92,17 @@ async def sync_data_to_kaggle(
     Tác vụ này được thực thi ngầm (**Background Task**) để không làm gián đoạn HTTP request.
     Có thể sử dụng endpoint `GET /sync/status/{task_id}` để kiểm tra tiến độ.
     """
-    task_id = str(uuid.uuid4())
+    task_id = str(uuid4())
     now_iso = datetime.now().isoformat()
+    dataset_slug = settings.KAGGLE_DATASET_SLUG
 
     # Thư mục staging cách ly riêng cho từng dataset_slug
-    target_staging_dir = str(Path(request.output_dir) / request.dataset_slug)
+    target_staging_dir = str(Path(request.output_dir) / dataset_slug)
 
     # Khởi tạo dữ liệu task ban đầu
     task_info = {
         "task_id": task_id,
-        "dataset_slug": request.dataset_slug,
+        "dataset_slug": dataset_slug,
         "status": "PENDING",
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -144,12 +129,10 @@ async def sync_data_to_kaggle(
 
             for table_id in req.table_ids:
                 logger.info(
-                    f"[Data Agent] [{task_id}] Đang kiểm tra/kéo dữ liệu bảng {req.dataset_id}.{table_id} từ BigQuery..."
+                    f"[Data Agent] [{task_id}] Đang kiểm tra/kéo dữ liệu bảng {settings.BIGQUERY_DATASET_ID}.{table_id} từ BigQuery..."
                 )
                 file_path = await bq_service.fetch_table_to_parquet_async(
-                    dataset_id=req.dataset_id,
                     table_id=table_id,
-                    project_id=req.project_id,
                     output_dir=staging_dir,
                     limit=req.limit,
                     start_date=req.start_date,
@@ -164,13 +147,11 @@ async def sync_data_to_kaggle(
 
             logger.info(
                 f"[Data Agent] [{task_id}] Đã tải về {len(synced_files)} file parquet. "
-                f"Đang đóng gói từ '{staging_dir}' và đẩy lên Kaggle Dataset '{req.dataset_slug}'..."
+                f"Đang đóng gói từ '{staging_dir}' và đẩy lên Kaggle Dataset '{dataset_slug}'..."
             )
             success = await asyncio.to_thread(
                 kaggle_service.push_dataset,
                 folder_path=staging_dir,
-                dataset_slug=req.dataset_slug,
-                title=req.title,
                 is_private=req.is_private,
             )
 
@@ -179,14 +160,14 @@ async def sync_data_to_kaggle(
                 current_task["status"] = "SUCCESS"
                 task_service.save_task(task_id, current_task)
                 logger.info(
-                    f"[Data Agent] [{task_id}] Đồng bộ thành công Kaggle Dataset '{req.dataset_slug}'!"
+                    f"[Data Agent] [{task_id}] Đồng bộ thành công Kaggle Dataset '{dataset_slug}'!"
                 )
             else:
                 current_task["status"] = "FAILED"
                 current_task["error"] = "Tải dữ liệu lên Kaggle không thành công."
                 task_service.save_task(task_id, current_task)
                 logger.error(
-                    f"[Data Agent] [{task_id}] Đồng bộ thất bại khi đẩy lên Kaggle Dataset '{req.dataset_slug}'."
+                    f"[Data Agent] [{task_id}] Đồng bộ thất bại khi đẩy lên Kaggle Dataset '{dataset_slug}'."
                 )
         except Exception as e:
             logger.error(
@@ -204,7 +185,7 @@ async def sync_data_to_kaggle(
         task_id=task_id,
         message="Tác tử Dữ liệu đã tiếp nhận yêu cầu và đang tiến hành đồng bộ dữ liệu BigQuery -> Kaggle...",
         status="PENDING",
-        dataset_slug=request.dataset_slug,
+        dataset_slug=dataset_slug,
         synced_tables=request.table_ids,
     )
 
